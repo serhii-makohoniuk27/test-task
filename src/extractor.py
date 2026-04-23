@@ -66,6 +66,15 @@ def _next_non_empty_line(lines: list[str], start_index: int) -> Optional[str]:
     return None
 
 
+def _looks_like_standalone_title(line: str) -> bool:
+    words = [w for w in line.split() if any(ch.isalpha() for ch in w)]
+    if not words:
+        return False
+
+    titled_words = sum(1 for word in words if word[:1].isupper())
+    return titled_words / len(words) >= 0.6
+
+
 def _should_start_new_no_price_dish(line: str, current_dish: RawItem, description_parts: list[str]) -> bool:
     if not _looks_like_dish_name(line):
         return False
@@ -76,6 +85,9 @@ def _should_start_new_no_price_dish(line: str, current_dish: RawItem, descriptio
 
     dish_name = str(current_dish.get("dish_name", ""))
     if line.lower() == dish_name.lower():
+        return False
+
+    if not _looks_like_standalone_title(line):
         return False
 
     return True
