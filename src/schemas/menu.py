@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class MenuItemResponse(BaseModel):
+    dish_id: str
     name: str
     price: float | None = None
     currency: str = "USD"

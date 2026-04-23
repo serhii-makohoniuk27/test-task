@@ -34,6 +34,20 @@ def test_description_merges_multiline_text() -> None:
     assert merge_description_lines(["line one", "line two"]) == "line one line two"
 
 
+def test_description_merge_normalizes_line_break_spacing() -> None:
+    lines = [
+        "BURGERS",
+        "ALL AMERICAN BURGER $17",
+        "brioche bun ",
+        "  with sauce",
+    ]
+
+    items = extract_raw_items(lines)
+
+    assert len(items) == 1
+    assert items[0]["description"] == "brioche bun with sauce"
+
+
 def test_splits_multiple_items_in_single_line() -> None:
     lines = [
         "WINGS",

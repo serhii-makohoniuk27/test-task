@@ -163,8 +163,8 @@ def extract_raw_items(lines: list[str]) -> list[RawItem]:
                     "description": "",
                 }
                 continue
-
-            description_parts.append(line)
+            if not is_dish_line(line) and not is_category(line):
+                description_parts.append(line)
 
     finalize_current_dish()
 
