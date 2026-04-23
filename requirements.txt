@@ -1,5 +1,6 @@
 pdfplumber
 pydantic>=2,<3
+pydantic-settings
 fastapi
 uvicorn
 python-multipart
