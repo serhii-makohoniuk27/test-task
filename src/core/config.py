@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 	app_version: str = "0.1.0"
 	debug: bool = False
 	api_prefix: str = "/api/v1"
+	max_upload_size_bytes: int = 10 * 1024 * 1024
 
 	model_config = SettingsConfigDict(
 		env_prefix="MENU_",
