@@ -7,8 +7,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from src.core.config import settings
-from src.schemas.menu import MenuItemResponse, MenuUploadResponse
-from src.services.menu_service import process_menu
+from src.schemas.menu import CategoryResponse, MenuItemResponse, MenuUploadResponse
+from src.services.menu_service import group_items_by_category, process_menu
 
 router = APIRouter(prefix="/menu", tags=["menu"])
 
@@ -47,5 +47,13 @@ async def upload_menu(file: UploadFile = File(...)) -> MenuUploadResponse:
     if not items:
         raise HTTPException(status_code=422, detail="No menu items found in PDF.")
 
-    response_items = [MenuItemResponse.model_validate(item.model_dump()) for item in items]
-    return MenuUploadResponse(items=response_items, count=len(response_items))
+    grouped = group_items_by_category(items)
+    response_categories: list[CategoryResponse] = []
+    for group in grouped:
+        name = str(group["name"])
+        group_items = group["items"]
+        response_items = [MenuItemResponse.model_validate(item.model_dump()) for item in group_items]
+        response_categories.append(CategoryResponse(name=name, items=response_items))
+
+    total_items = sum(len(category.items) for category in response_categories)
+    return MenuUploadResponse(categories=response_categories, total_items=total_items)

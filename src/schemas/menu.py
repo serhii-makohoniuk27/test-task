@@ -13,6 +13,11 @@ class MenuItemResponse(BaseModel):
     metadata: dict[str, str] = Field(default_factory=dict)
 
 
-class MenuUploadResponse(BaseModel):
+class CategoryResponse(BaseModel):
+    name: str
     items: list[MenuItemResponse]
-    count: int
+
+
+class MenuUploadResponse(BaseModel):
+    categories: list[CategoryResponse]
+    total_items: int
