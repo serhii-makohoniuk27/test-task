@@ -3,31 +3,43 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
+from src.utils import clean_whitespace, merge_description_lines
+
 
 type RawItem = dict[str, Any]
 
-_PRICE_TOKEN_RE = r"\$[A-Za-z0-9]+(?:\.\d{1,2})?"
-_DISH_WITH_PRICE_RE = re.compile(
-    rf"^(?P<name>.+?)\s*(?:\.{2,}|\s+)\s*(?P<price>{_PRICE_TOKEN_RE})$"
-)
-_PRICE_ONLY_RE = re.compile(rf"^(?P<price>{_PRICE_TOKEN_RE})$")
+_PRICE_TOKEN_RE = r"[\$€£]\s*(?:\d+(?:\.\d{1,2})?|X)"
+_DISH_WITH_PRICE_RE = re.compile(rf"^(?P<name>.+?)\s*(?:\.{2,}|\s+)\s*(?P<price>{_PRICE_TOKEN_RE})$", re.IGNORECASE)
+_PRICE_ONLY_RE = re.compile(rf"^(?P<price>{_PRICE_TOKEN_RE})$", re.IGNORECASE)
 _CATEGORY_ALLOWED_RE = re.compile(r"^[A-Z0-9 &'/\-]+$")
 
 
 def _clean_line(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
+    return clean_whitespace(value)
 
 
-def _is_category_header(line: str) -> bool:
+def _is_category_header(line: str, next_line: Optional[str]) -> bool:
     if not line:
         return False
     if line != line.upper():
         return False
     if not any(ch.isalpha() for ch in line):
         return False
+    if len(line.split()) > 4:
+        return False
+    if len(line) > 32:
+        return False
+    if line.endswith((".", ",", ";", ":")):
+        return False
     if _PRICE_ONLY_RE.match(line):
         return False
-    return bool(_CATEGORY_ALLOWED_RE.match(line))
+    if not _CATEGORY_ALLOWED_RE.match(line):
+        return False
+    if not next_line:
+        return True
+
+    # Reduce false positives: category headers are usually followed by dish-like lines.
+    return bool(_DISH_WITH_PRICE_RE.match(next_line) or _looks_like_dish_name(next_line))
 
 
 def _looks_like_dish_name(line: str) -> bool:
@@ -43,10 +55,30 @@ def _looks_like_dish_name(line: str) -> bool:
 
 
 def _merge_description(parts: list[str]) -> Optional[str]:
-    if not parts:
-        return None
-    merged = _clean_line(" ".join(parts))
-    return merged or None
+    return merge_description_lines(parts)
+
+
+def _next_non_empty_line(lines: list[str], start_index: int) -> Optional[str]:
+    for index in range(start_index + 1, len(lines)):
+        candidate = _clean_line(lines[index])
+        if candidate:
+            return candidate
+    return None
+
+
+def _should_start_new_no_price_dish(line: str, current_dish: RawItem, description_parts: list[str]) -> bool:
+    if not _looks_like_dish_name(line):
+        return False
+    if _DISH_WITH_PRICE_RE.match(line):
+        return False
+    if not description_parts:
+        return False
+
+    dish_name = str(current_dish.get("dish_name", ""))
+    if line.lower() == dish_name.lower():
+        return False
+
+    return True
 
 
 def extract_raw_items(lines: list[str]) -> list[RawItem]:
@@ -65,12 +97,13 @@ def extract_raw_items(lines: list[str]) -> list[RawItem]:
         current_dish = None
         description_parts = []
 
-    for raw_line in lines:
+    for index, raw_line in enumerate(lines):
         line = _clean_line(raw_line)
         if not line:
             continue
 
-        if _is_category_header(line):
+        next_line = _next_non_empty_line(lines, index)
+        if _is_category_header(line, next_line):
             finalize_current_dish()
             current_category = line
             continue
@@ -96,6 +129,16 @@ def extract_raw_items(lines: list[str]) -> list[RawItem]:
             continue
 
         if current_dish is not None:
+            if _should_start_new_no_price_dish(line, current_dish, description_parts):
+                finalize_current_dish()
+                current_dish = {
+                    "category": current_category,
+                    "dish_name": line,
+                    "raw_price": None,
+                    "description": None,
+                }
+                continue
+
             description_parts.append(line)
 
     finalize_current_dish()

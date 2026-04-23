@@ -1,33 +1,12 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Optional
 
 from src.models import MenuItem
+from src.utils import parse_price_token
 
 
 type RawItem = dict[str, Any]
-
-
-def _parse_raw_price(raw_price: Optional[str]) -> tuple[Optional[float], str]:
-    if not raw_price:
-        return None, "USD"
-
-    value = raw_price.strip()
-    currency = "USD"
-    if value.startswith("$"):
-        currency = "USD"
-    elif value.startswith("€"):
-        currency = "EUR"
-    elif value.startswith("£"):
-        currency = "GBP"
-
-    numeric = re.sub(r"^[\$€£]\s*", "", value)
-    try:
-        return float(numeric), currency
-    except ValueError:
-        # Handles placeholders like "$X" where no numeric value is available.
-        return None, currency
 
 
 def normalize_items(raw_items: list[RawItem]) -> list[MenuItem]:
@@ -39,7 +18,7 @@ def normalize_items(raw_items: list[RawItem]) -> list[MenuItem]:
         if not name:
             continue
 
-        price, currency = _parse_raw_price(item.get("raw_price"))
+        price, currency = parse_price_token(item.get("raw_price"))
         category = item.get("category")
         description = item.get("description")
 
