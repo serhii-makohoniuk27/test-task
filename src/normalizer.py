@@ -1,23 +1,33 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
-from models import MenuItem
+from src.models import MenuItem
 
 
 type RawItem = dict[str, Any]
 
 
-def _currency_from_symbol(symbol: Optional[str]) -> str:
-    match symbol:
-        case "$":
-            return "USD"
-        case "€":
-            return "EUR"
-        case "£":
-            return "GBP"
-        case _:
-            return "USD"
+def _parse_raw_price(raw_price: Optional[str]) -> tuple[Optional[float], str]:
+    if not raw_price:
+        return None, "USD"
+
+    value = raw_price.strip()
+    currency = "USD"
+    if value.startswith("$"):
+        currency = "USD"
+    elif value.startswith("€"):
+        currency = "EUR"
+    elif value.startswith("£"):
+        currency = "GBP"
+
+    numeric = re.sub(r"^[\$€£]\s*", "", value)
+    try:
+        return float(numeric), currency
+    except ValueError:
+        # Handles placeholders like "$X" where no numeric value is available.
+        return None, currency
 
 
 def normalize_items(raw_items: list[RawItem]) -> list[MenuItem]:
@@ -25,28 +35,26 @@ def normalize_items(raw_items: list[RawItem]) -> list[MenuItem]:
     seen: set[tuple[str, Optional[float], str]] = set()
 
     for item in raw_items:
-        name = str(item.get("name", "")).strip()
+        name = str(item.get("dish_name", "")).strip()
         if not name:
             continue
 
-        price_value = item.get("price")
-        price: Optional[float] = float(price_value) if isinstance(price_value, (int, float)) else None
-        currency = _currency_from_symbol(item.get("currency_symbol"))
+        price, currency = _parse_raw_price(item.get("raw_price"))
+        category = item.get("category")
+        description = item.get("description")
 
         key = (name.lower(), price, currency)
         if key in seen:
             continue
         seen.add(key)
 
-        metadata = item.get("metadata", {})
-        safe_metadata = {str(k): str(v) for k, v in metadata.items()} if isinstance(metadata, dict) else {}
-
         normalized.append(
             MenuItem(
                 name=name,
                 price=price,
                 currency=currency,
-                metadata=safe_metadata,
+                category=str(category).strip() if isinstance(category, str) and category.strip() else None,
+                description=str(description).strip() if isinstance(description, str) and description.strip() else None,
             )
         )
 

@@ -1,15 +1,18 @@
-# Menu PDF Extractor (Python 3.14)
+# Menu PDF Extractor API (Python 3.14)
 
-Minimal CLI tool that extracts structured menu items from a restaurant menu PDF and writes normalized JSON output.
+Minimal FastAPI service that extracts structured menu items from restaurant menu PDFs.
 
 ## Project Structure
 
 - `src/main.py`
+- `src/api/routes/menu.py`
+- `src/services/menu_service.py`
+- `src/core/config.py`
+- `src/schemas/menu.py`
 - `src/pdf_parser.py`
 - `src/extractor.py`
 - `src/normalizer.py`
 - `src/models.py`
-- `src/utils.py`
 - `data/`
 - `output/`
 
@@ -17,25 +20,30 @@ Minimal CLI tool that extracts structured menu items from a restaurant menu PDF 
 
 - `pdfplumber`
 - `pydantic` v2
+- `fastapi`
+- `uvicorn`
+- `python-multipart`
 
 ## Quick Start
 
 ```bash
-python -m pip install pdfplumber "pydantic>=2,<3"
+python -m pip install -r requirements.txt
 ```
 
-Put your PDF in `data/` (or anywhere) and run:
+Run API:
 
 ```bash
-python src/main.py data/menu.pdf
+uvicorn src.main:app --reload
 ```
 
-Output is written to:
+## Endpoint
 
-- `output/menu.json`
+- `POST /api/v1/menu/upload`
 
-## Notes
+Upload a PDF file using `multipart/form-data` with field name `file`.
 
-- Uses `pathlib` for path handling.
-- Uses modern type hints (`list[str]`, `dict[str, Any]`) and `Optional` from `typing`.
-- Extraction is regex-based and intentionally minimal; adapt patterns in `src/extractor.py` for specific menu layouts.
+Response:
+
+- `200`: list of menu items
+- `400`: invalid file type or empty upload
+- `422`: no menu items found
