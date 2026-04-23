@@ -32,3 +32,38 @@ def test_description_merges_multiline_text() -> None:
     assert len(items) == 1
     assert items[0]["description"] == "100% beef patty house sauce toasted brioche bun"
     assert merge_description_lines(["line one", "line two"]) == "line one line two"
+
+
+def test_splits_multiple_items_in_single_line() -> None:
+    lines = [
+        "WINGS",
+        "4 WINGS & 4 SAUCES $X 8 WINGS & 8 SAUCES $X",
+    ]
+
+    items = extract_raw_items(lines)
+
+    assert len(items) == 2
+    assert items[0]["dish_name"] == "4 WINGS & 4 SAUCES"
+    assert items[0]["raw_price"] == "$X"
+    assert items[0]["description"] == ""
+    assert items[1]["dish_name"] == "8 WINGS & 8 SAUCES"
+    assert items[1]["raw_price"] == "$X"
+
+
+def test_signature_sections_are_items_without_description() -> None:
+    lines = [
+        "SIGNATURE SAUCES",
+        "GARLIC PARMESAN",
+        "SMOKY BBQ",
+    ]
+
+    items = extract_raw_items(lines)
+
+    assert len(items) == 2
+    assert items[0] == {
+        "category": "SIGNATURE SAUCES",
+        "dish_name": "GARLIC PARMESAN",
+        "raw_price": None,
+        "description": "",
+    }
+    assert items[1]["dish_name"] == "SMOKY BBQ"

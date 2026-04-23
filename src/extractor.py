@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Optional
 
-from src.utils import clean_whitespace, merge_description_lines
+from src.utils import (
+    clean_whitespace,
+    extract_price_segments,
+    is_category,
+    is_dish_line,
+    merge_description_lines,
+)
 
 
 type RawItem = dict[str, Any]
-
-_PRICE_TOKEN_RE = r"[\$€£]\s*(?:\d+(?:\.\d{1,2})?|X)"
-_DISH_WITH_PRICE_RE = re.compile(rf"^(?P<name>.+?)\s*(?:\.{2,}|\s+)\s*(?P<price>{_PRICE_TOKEN_RE})$", re.IGNORECASE)
-_PRICE_ONLY_RE = re.compile(rf"^(?P<price>{_PRICE_TOKEN_RE})$", re.IGNORECASE)
-_CATEGORY_ALLOWED_RE = re.compile(r"^[A-Z0-9 &'/\-]+$")
+_NO_PRICE_LIST_CATEGORIES = {"SIGNATURE SAUCES", "SIGNATURE RUBS"}
 
 
 def _clean_line(value: str) -> str:
@@ -19,27 +20,15 @@ def _clean_line(value: str) -> str:
 
 
 def _is_category_header(line: str, next_line: Optional[str]) -> bool:
-    if not line:
+    if not is_category(line):
         return False
-    if line != line.upper():
-        return False
-    if not any(ch.isalpha() for ch in line):
-        return False
-    if len(line.split()) > 4:
-        return False
-    if len(line) > 32:
-        return False
-    if line.endswith((".", ",", ";", ":")):
-        return False
-    if _PRICE_ONLY_RE.match(line):
-        return False
-    if not _CATEGORY_ALLOWED_RE.match(line):
-        return False
-    if not next_line:
+
+    if line in _NO_PRICE_LIST_CATEGORIES:
         return True
 
-    # Reduce false positives: category headers are usually followed by dish-like lines.
-    return bool(_DISH_WITH_PRICE_RE.match(next_line) or _looks_like_dish_name(next_line))
+    if not next_line:
+        return True
+    return is_dish_line(next_line) or not is_category(next_line)
 
 
 def _looks_like_dish_name(line: str) -> bool:
@@ -66,19 +55,10 @@ def _next_non_empty_line(lines: list[str], start_index: int) -> Optional[str]:
     return None
 
 
-def _looks_like_standalone_title(line: str) -> bool:
-    words = [w for w in line.split() if any(ch.isalpha() for ch in w)]
-    if not words:
-        return False
-
-    titled_words = sum(1 for word in words if word[:1].isupper())
-    return titled_words / len(words) >= 0.6
-
-
 def _should_start_new_no_price_dish(line: str, current_dish: RawItem, description_parts: list[str]) -> bool:
     if not _looks_like_dish_name(line):
         return False
-    if _DISH_WITH_PRICE_RE.match(line):
+    if is_dish_line(line):
         return False
     if not description_parts:
         return False
@@ -87,7 +67,11 @@ def _should_start_new_no_price_dish(line: str, current_dish: RawItem, descriptio
     if line.lower() == dish_name.lower():
         return False
 
-    if not _looks_like_standalone_title(line):
+    words = [word for word in line.split() if any(ch.isalpha() for ch in word)]
+    if not words:
+        return False
+    title_like_words = sum(1 for word in words if word[:1].isupper())
+    if title_like_words / len(words) < 0.6:
         return False
 
     return True
@@ -104,7 +88,7 @@ def extract_raw_items(lines: list[str]) -> list[RawItem]:
         if current_dish is None:
             return
 
-        current_dish["description"] = _merge_description(description_parts)
+        current_dish["description"] = _merge_description(description_parts) or ""
         extracted.append(current_dish)
         current_dish = None
         description_parts = []
@@ -114,20 +98,49 @@ def extract_raw_items(lines: list[str]) -> list[RawItem]:
         if not line:
             continue
 
+        if current_category in _NO_PRICE_LIST_CATEGORIES and line not in _NO_PRICE_LIST_CATEGORIES:
+            finalize_current_dish()
+            extracted.append(
+                {
+                    "category": current_category,
+                    "dish_name": line,
+                    "raw_price": None,
+                    "description": "",
+                }
+            )
+            continue
+
         next_line = _next_non_empty_line(lines, index)
         if _is_category_header(line, next_line):
             finalize_current_dish()
             current_category = line
             continue
 
-        dish_with_price = _DISH_WITH_PRICE_RE.match(line)
-        if dish_with_price:
+        if is_dish_line(line):
+            segments = extract_price_segments(line)
+            if not segments:
+                continue
+
             finalize_current_dish()
+
+            if len(segments) > 1:
+                for dish_name, raw_price in segments:
+                    extracted.append(
+                        {
+                            "category": current_category,
+                            "dish_name": _clean_line(dish_name.strip(".- ")),
+                            "raw_price": raw_price,
+                            "description": "",
+                        }
+                    )
+                continue
+
+            dish_name, raw_price = segments[0]
             current_dish = {
                 "category": current_category,
-                "dish_name": _clean_line(dish_with_price.group("name").strip(".- ")),
-                "raw_price": dish_with_price.group("price"),
-                "description": None,
+                "dish_name": _clean_line(dish_name.strip(".- ")),
+                "raw_price": raw_price,
+                "description": "",
             }
             continue
 
@@ -147,7 +160,7 @@ def extract_raw_items(lines: list[str]) -> list[RawItem]:
                     "category": current_category,
                     "dish_name": line,
                     "raw_price": None,
-                    "description": None,
+                    "description": "",
                 }
                 continue
 
